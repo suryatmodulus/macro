@@ -1343,7 +1343,10 @@ async fn run() -> anyhow::Result<()> {
             ),
             call::domain::service::CallRecordQueryServiceImpl::new(PgCallRepo::new(db.clone())),
             crm_service.clone(),
-            ForeignEntityServiceImpl::new(PgForeignEntityRepo::new(db.clone())),
+            GithubPullRequestServiceImpl::new(
+                ForeignEntityServiceImpl::new(PgForeignEntityRepo::new(db.clone())),
+                PgGithubPullRequestRepo::new(db.clone()),
+            ),
             reminders_service.clone(),
         )
         .with_agent_branches(agent_changes::outbound::postgres::PgChangesetRepo::new(
@@ -1371,7 +1374,10 @@ async fn run() -> anyhow::Result<()> {
                 readonly_db.clone(),
             )),
             crm_service.clone(),
-            ForeignEntityServiceImpl::new(PgForeignEntityRepo::new(readonly_db.clone())),
+            GithubPullRequestServiceImpl::new(
+                ForeignEntityServiceImpl::new(PgForeignEntityRepo::new(readonly_db.clone())),
+                PgGithubPullRequestRepo::new(readonly_db.clone()),
+            ),
             reminders_service.clone(),
         )
         .with_favorites(favorites_service.clone())
