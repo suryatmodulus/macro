@@ -6551,6 +6551,7 @@
       "crates/foreign_entity",
       "crates/frecency",
       "crates/genai_telemetry",
+      "crates/github_pull_requests",
       "crates/google_token",
       "crates/harness_id",
       "crates/harness_token",
