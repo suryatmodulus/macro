@@ -54,6 +54,7 @@ import {
 } from 'solid-js';
 import { NIL as NIL_UUID } from 'uuid';
 import { registerChannelNotificationRefresh } from '../../channel/register-notification-refresh';
+import { soupQueryExcludesDone } from '../excludes-done';
 import type { SoupAstBody, SoupAstItemsData, SoupAstParams } from '../items';
 import { soupPageTimestamp } from '../page-timestamp';
 import {
@@ -67,6 +68,10 @@ import {
   usePendingGraphqlSoupDeleteIds,
   withoutPendingGraphqlSoupDeletes,
 } from './optimistic-deletions';
+import {
+  usePendingGraphqlSoupDone,
+  withPendingDoneIds,
+} from './optimistic-done';
 import {
   materializeReconciledSoup,
   soupItemKey,
@@ -115,6 +120,8 @@ export function createGraphqlSoupAstItemsQuery(
 ): GraphqlSoupAstItemsQuery {
   const instructionsIdQuery = useInstructionsMdIdQuery();
   const pendingDeleteIds = usePendingGraphqlSoupDeleteIds();
+  const pendingDone = usePendingGraphqlSoupDone();
+  const excludesDone = createMemo(() => soupQueryExcludesDone([args().body]));
   const [offline, setOffline] = createSignal(
     typeof navigator !== 'undefined' && !navigator.onLine
   );
@@ -395,12 +402,15 @@ export function createGraphqlSoupAstItemsQuery(
 
     void (async () => {
       const span = Telemetry.span('graphql_cache.soup_local_evaluation');
-      let expectedRevision = revision;
       let retryCount = 0;
       let discarded = false;
       let outcome: 'success' | 'incomplete' | 'error' = 'incomplete';
       try {
         for (let attempt = 0; attempt < 3; attempt += 1) {
+          if (requestId !== localRequest) {
+            discarded = true;
+            return;
+          }
           let result = await host.entityFilter({
             filters,
             sortMethod,
@@ -454,12 +464,10 @@ export function createGraphqlSoupAstItemsQuery(
           }
           if (
             chunks.some((chunk) => result.revision !== chunk.revision) ||
-            result.revision !== latestRevision ||
-            result.revision !== expectedRevision
+            result.revision !== latestRevision
           ) {
             discarded = true;
             retryCount += 1;
-            expectedRevision = latestRevision;
             setCurrentCacheRevision(latestRevision);
             continue;
           }
@@ -488,35 +496,42 @@ export function createGraphqlSoupAstItemsQuery(
             const item = mapGraphqlSoupItem(record);
             return item ? [item] : [];
           });
-          setLocalProjection({
-            input,
-            generation: requestGeneration,
-            baselineKeys: new Set(
-              result.kind === 'mail-page' ? [] : records.map(soupItemKey)
-            ),
-            displayedKeys: new Set(reconciledRecords.map(soupItemKey)),
-            withoutEmail,
-            ...(result.kind === 'mail-page'
-              ? {
-                  mail: {
-                    nextCursor: result.nextCursor,
-                    revision: result.revision,
-                    records: reconciledRecords,
-                  },
-                }
-              : {}),
-            data: {
-              cachedMail: result.kind === 'mail-page',
-              entities: mapSoupPageToEntityList(
-                { items, next_cursor: undefined },
-                {
-                  instructionsIdQuery,
-                  showSupportedForeignEntities:
-                    queryOptions.showSupportedForeignEntities,
-                }
+          batch(() => {
+            setLocalProjection({
+              input,
+              generation: requestGeneration,
+              baselineKeys: new Set(
+                result.kind === 'mail-page' ? [] : records.map(soupItemKey)
               ),
-              groups: undefined,
-            },
+              displayedKeys: new Set(reconciledRecords.map(soupItemKey)),
+              withoutEmail,
+              ...(result.kind === 'mail-page'
+                ? {
+                    mail: {
+                      nextCursor: result.nextCursor,
+                      revision: result.revision,
+                      records: reconciledRecords,
+                    },
+                  }
+                : {}),
+              data: {
+                cachedMail: result.kind === 'mail-page',
+                entities: mapSoupPageToEntityList(
+                  { items, next_cursor: undefined },
+                  {
+                    instructionsIdQuery,
+                    showSupportedForeignEntities:
+                      queryOptions.showSupportedForeignEntities,
+                  }
+                ),
+                groups: undefined,
+              },
+            });
+            // The filter, fragments, and final revision agree. A newer coherent
+            // page is valid even if hydration advanced past the initial read.
+            // Publish both result kinds' watermarks: the Mail guard avoids a
+            // rescan, and reconnect cannot make an older network snapshot authoritative.
+            setCurrentCacheRevision(result.revision);
           });
           outcome = 'success';
           recordAuthority('local');
@@ -828,7 +843,13 @@ export function createGraphqlSoupAstItemsQuery(
           ...data,
           oldestFetchedTimestamp: query.data?.data.oldestFetchedTimestamp,
         },
-        pendingDeleteIds()
+        excludesDone()
+          ? withPendingDoneIds(
+              pendingDeleteIds(),
+              data?.entities ?? [],
+              pendingDone()
+            )
+          : pendingDeleteIds()
       );
     }),
     error,
