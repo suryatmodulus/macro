@@ -134,7 +134,8 @@ impl MacroEventBroker for ToolBotEventBroker {
 }
 
 /// Concrete bot domain service used by AI tools.
-pub type ToolBotService = BotServiceImpl<PgBotsRepo, ToolBotEventBroker>;
+pub type ToolBotService =
+    BotServiceImpl<PgBotsRepo, ToolBotEventBroker, crate::mcp_app_catalog::PipedreamMcpAppCatalog>;
 
 /// Bot-management AI tool context.
 pub type ToolBotToolContext = BotToolContext<ToolBotService, ToolEntityAccessService>;
@@ -146,9 +147,14 @@ pub fn build_bot_tool_context(
     event_broker: ToolBotEventBroker,
     entity_access_service: Arc<ToolEntityAccessService>,
     document_storage_service_url: String,
+    pipedream: Option<Arc<pipedream_mcp::outbound::api::PipedreamClient>>,
 ) -> ToolBotToolContext {
     BotToolContext {
-        service: Arc::new(BotServiceImpl::new(PgBotsRepo::new(pool), event_broker)),
+        service: Arc::new(
+            BotServiceImpl::new(PgBotsRepo::new(pool), event_broker).with_mcp_apps(
+                crate::mcp_app_catalog::PipedreamMcpAppCatalog::new(pipedream),
+            ),
+        ),
         entity_access_service,
         document_storage_service_url: document_storage_service_url
             .trim_end_matches('/')
@@ -1046,25 +1052,37 @@ pub type ToolNotificationService = notification::domain::service::NotificationRe
 pub type ToolNotificationToolContext = NotificationToolContext<ToolNotificationService>;
 
 /// Type alias for the reminders service implementation used by AI tools.
-pub type ToolRemindersService = reminders::domain::service::RemindersServiceImpl<
-    reminders::outbound::pg_reminders_repo::PgRemindersRepo,
->;
+pub type ToolRemindersService =
+    reminders::domain::email_followup::reminder_service::EmailRemindersService<
+        reminders::domain::service::RemindersServiceImpl<
+            reminders::outbound::pg_reminders_repo::PgRemindersRepo,
+        >,
+        reminders::outbound::pg_reminders_repo::PgRemindersRepo,
+        ToolUserEmailService,
+        reminders::domain::ports::SystemClock,
+    >;
 
 /// Type alias for the reminders tool context.
 pub type ToolRemindersToolContext =
     RemindersToolContext<ToolRemindersService, ToolEntityAccessService>;
 
-/// Build the reminders tool context from a database pool.
+/// Build the reminders tool context with the same email lifecycle as HTTP.
 ///
 /// The reminder tools go through the same access receipts the HTTP API does,
 /// so this needs the entity access service as well as the repository.
 pub fn build_reminders_tool_context(
     pool: sqlx::PgPool,
+    email_service: Arc<ToolUserEmailService>,
     entity_access_service: Arc<ToolEntityAccessService>,
 ) -> ToolRemindersToolContext {
+    let repo = reminders::outbound::pg_reminders_repo::PgRemindersRepo::new(pool);
     RemindersToolContext::new(
-        reminders::domain::service::RemindersServiceImpl::new(
-            reminders::outbound::pg_reminders_repo::PgRemindersRepo::new(pool),
+        reminders::domain::email_followup::reminder_service::EmailRemindersService::new(
+            reminders::domain::service::RemindersServiceImpl::new(repo.clone()),
+            reminders::domain::email_followup::service::EmailFollowupService::new(
+                repo,
+                (*email_service).clone(),
+            ),
         ),
         entity_access_service,
     )

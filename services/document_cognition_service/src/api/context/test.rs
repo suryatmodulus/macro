@@ -166,11 +166,7 @@ impl StreamRepo for MockStreamRepo {
 pub async fn test_api_context(pool: sqlx::Pool<sqlx::Postgres>) -> std::sync::Arc<ApiContext> {
     let config = Config::new_empty_for_test();
     let enforcement = config.enable_ai_usage_enforcement;
-    let admission = ai_billing::composition::pg_admission_service(
-        pool.clone(),
-        config.environment,
-        enforcement,
-    );
+    let admission = ai_billing::composition::pg_admission_service(pool.clone(), enforcement);
     let recorder = ai_usage::pg_recorder_with_enforcement(pool.clone(), enforcement);
     use aws_sdk_sqs;
     use channels::{
@@ -429,7 +425,7 @@ pub async fn test_api_context(pool: sqlx::Pool<sqlx::Postgres>) -> std::sync::Ar
         entity_access_service.clone(),
         document_tool_context.service.clone(),
         chat_tool_context.service.clone(),
-        user_email_service,
+        user_email_service.clone(),
     );
 
     let initiative_tool_context = ai_tools::build_initiative_tool_context(
@@ -466,6 +462,7 @@ pub async fn test_api_context(pool: sqlx::Pool<sqlx::Postgres>) -> std::sync::Ar
         notification_tool_context: notification_tool_context.clone(),
         reminders_tool_context: ai_tools::build_reminders_tool_context(
             pool.clone(),
+            user_email_service.clone(),
             entity_access_service.clone(),
         ),
         import_tool_context: ai_tools::ToolImportToolContext::unwired(),
@@ -479,6 +476,7 @@ pub async fn test_api_context(pool: sqlx::Pool<sqlx::Postgres>) -> std::sync::Ar
             ai_tools::ToolBotEventBroker::Real(macro_event_broker.clone()),
             entity_access_service.clone(),
             "http://localhost:8086".to_string(),
+            None,
         ),
         project_tool_context,
         initiative_tool_context,
@@ -624,7 +622,6 @@ pub async fn test_api_context(pool: sqlx::Pool<sqlx::Postgres>) -> std::sync::Ar
                 ai_billing::outbound::PgUsageReader::new(pool.clone()),
                 ai_billing::outbound::PgBillingRepo::new(pool.clone()),
                 ai_billing::outbound::NoOpPaymentGateway,
-                config.environment,
             )
             .with_enforcement(enforcement),
         ),
