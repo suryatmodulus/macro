@@ -22,6 +22,7 @@ import {
 } from './Bots';
 import {
   createCalendarEventHandler,
+  createConfirmedCalendarEventHandler,
   deleteCalendarEventHandler,
   listCalendarEventsHandler,
   listCalendarsHandler,
@@ -133,6 +134,7 @@ const toolHandlers: ToolHandlerMap<RenderContext> = {
   ListBots: listBotsHandler,
   ManageBotChannelAccess: manageBotChannelAccessHandler,
   CreateCalendarEvent: createCalendarEventHandler,
+  CreateConfirmedCalendarEvent: createConfirmedCalendarEventHandler,
   UpdateCalendarEvent: updateCalendarEventHandler,
   DeleteCalendarEvent: deleteCalendarEventHandler,
   ListCalendarEvents: listCalendarEventsHandler,
