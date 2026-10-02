@@ -26,3 +26,6 @@ pub mod speculation;
 
 #[cfg(test)]
 mod test;
+
+/// Native transcript normalization contract.
+pub mod transcript;
