@@ -39,6 +39,8 @@ type BranchChoice =
 export function RepositoryPicker(props: {
   repoUrl?: string;
   branch: string;
+  /** This runtime always starts new worktrees from main. */
+  branchLocked?: boolean;
   /** Repositories the signed-in user can hand a coder through Macro's GitHub App. */
   repositories: ReachableRepository[];
   repositoriesLoading: boolean;
@@ -320,7 +322,7 @@ export function RepositoryPicker(props: {
         <Popover
           open={branchOpen()}
           onOpenChange={(open) => {
-            setBranchOpen(open);
+            setBranchOpen(open && !props.branchLocked);
             setError('');
             if (open) {
               setBranchSearch('');
@@ -334,10 +336,18 @@ export function RepositoryPicker(props: {
           <Popover.Trigger
             class="pill min-w-0 max-w-[45%] text-ink"
             aria-label="Branch"
+            disabled={props.branchLocked}
+            title={
+              props.branchLocked
+                ? 'New local sessions start from main'
+                : undefined
+            }
           >
             <GitBranchIcon class="size-4 shrink-0" />
             <span class="truncate">{props.branch}</span>
-            <CaretDownIcon class="size-3 shrink-0" />
+            <Show when={!props.branchLocked}>
+              <CaretDownIcon class="size-3 shrink-0" />
+            </Show>
           </Popover.Trigger>
           <Popover.Portal>
             <Popover.Content class="z-action-menu w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-edge-muted bg-menu p-3 text-sm text-ink shadow-menu">
