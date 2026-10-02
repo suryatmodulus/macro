@@ -43,7 +43,7 @@ path = "src/doppler_config.rs"
 
 [dependencies]
 agent_session = { path = "../../crates/agent_session", default-features = false, features = ["outbound"] }
-agent_fold = { path = "../../crates/agent_fold" }
+agent_fold = { path = "../../crates/folds/agent_fold" }
 anyhow = { workspace = true }
 aws-sdk-dynamodb = { workspace = true }
 aws-sdk-s3 = { workspace = true }
